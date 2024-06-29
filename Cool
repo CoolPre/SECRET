@@ -1,0 +1,249 @@
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
+local ServerScriptService = game:GetService("ServerScriptService")
+
+-- Constants
+local FLY_SPEED = 50  -- Adjust flying speed here
+local PREDICTION_BUFFER = 0.1  -- Prediction buffer in seconds
+
+-- Securely generate a unique identifier for RemoteEvent and RemoteFunction
+local uniqueKey = "your_secure_key_here"  -- Replace with a secure, random key
+
+-- Create RemoteEvent for toggling fly mode
+local remoteEvent = Instance.new("RemoteEvent")
+remoteEvent.Name = "ToggleFlyMode_" .. uniqueKey
+remoteEvent.Parent = ReplicatedStorage
+
+-- Create RemoteFunction for predicting fly mode state
+local remoteFunction = Instance.new("RemoteFunction")
+remoteFunction.Name = "GetFlyMode_" .. uniqueKey
+remoteFunction.Parent = ReplicatedStorage
+
+-- Create ScreenGui for fly mode controls
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "FlyGui"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
+
+-- Create TextButton for toggling fly mode
+local button = Instance.new("TextButton")
+button.Name = "FlyButton"
+button.Size = UDim2.new(0, 200, 0, 50)
+button.Position = UDim2.new(0.5, -100, 0.5, -75)
+button.Text = "Toggle Fly Mode (OFF)"
+button.TextColor3 = Color3.fromRGB(255, 255, 255)
+button.BackgroundColor3 = Color3.fromRGB(0, 120, 215)
+button.Font = Enum.Font.SourceSans
+button.FontSize = Enum.FontSize.Size18
+button.Parent = screenGui
+
+-- Create TextLabel for attribution
+local label = Instance.new("TextLabel")
+label.Name = "AttributionLabel"
+label.Size = UDim2.new(0, 200, 0, 20)
+label.Position = UDim2.new(0.5, -100, 0.5, 35)
+label.Text = "By UlyssesnezGaming"
+label.TextColor3 = Color3.fromRGB(255, 255, 255)
+label.BackgroundTransparency = 1
+label.Font = Enum.Font.SourceSans
+label.FontSize = Enum.FontSize.Size14
+label.Parent = screenGui
+
+-- Create Buttons for adjusting speed
+local buttonDecrease = Instance.new("TextButton")
+buttonDecrease.Name = "DecreaseButton"
+buttonDecrease.Size = UDim2.new(0, 50, 0, 50)
+buttonDecrease.Position = UDim2.new(0.5, -125, 0.8, -25)
+buttonDecrease.Text = "-"
+buttonDecrease.TextColor3 = Color3.fromRGB(255, 255, 255)
+buttonDecrease.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+buttonDecrease.Font = Enum.Font.SourceSans
+buttonDecrease.FontSize = Enum.FontSize.Size18
+buttonDecrease.Parent = screenGui
+
+local buttonIncrease = Instance.new("TextButton")
+buttonIncrease.Name = "IncreaseButton"
+buttonIncrease.Size = UDim2.new(0, 50, 0, 50)
+buttonIncrease.Position = UDim2.new(0.5, 75, 0.8, -25)
+buttonIncrease.Text = "+"
+buttonIncrease.TextColor3 = Color3.fromRGB(255, 255, 255)
+buttonIncrease.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+buttonIncrease.Font = Enum.Font.SourceSans
+buttonIncrease.FontSize = Enum.FontSize.Size18
+buttonIncrease.Parent = screenGui
+
+local isFlying = false
+local lastToggleTime = 0
+local lastPrediction = false
+local speed = FLY_SPEED
+
+local function enableFlyMode(character)
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then
+        return
+    end
+
+    -- Disable character physics to allow flying
+    humanoid.PlatformStand = true
+
+    -- Create BodyVelocity to control flying
+    local bodyVelocity = Instance.new("BodyVelocity")
+    bodyVelocity.Velocity = Vector3.new(0, speed, 0)
+    bodyVelocity.MaxForce = Vector3.new(0, math.huge, 0)
+    bodyVelocity.P = 1000  -- Adjust P value for smooth movement
+    bodyVelocity.Parent = character.PrimaryPart
+
+    character:SetAttribute("Flying", true)
+end
+
+local function disableFlyMode(character)
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then
+        return
+    end
+
+    -- Enable character physics
+    humanoid.PlatformStand = false
+
+    -- Remove BodyVelocity
+    local bodyVelocity = character.PrimaryPart:FindFirstChildOfClass("BodyVelocity")
+    if bodyVelocity then
+        bodyVelocity:Destroy()
+    end
+
+    character:SetAttribute("Flying", false)
+end
+
+local function toggleFlyMode()
+    local currentTime = tick()
+
+    -- Prevent rapid toggling
+    if currentTime - lastToggleTime < 0.5 then
+        return
+    end
+    lastToggleTime = currentTime
+
+    isFlying = not isFlying
+
+    local player = Players.LocalPlayer
+    local character = player.Character
+    if not character then
+        return
+    end
+
+    if isFlying then
+        enableFlyMode(character)
+        button.Text = "Toggle Fly Mode (ON)"
+        button.BackgroundColor3 = Color3.fromRGB(0, 215, 120)
+    else
+        disableFlyMode(character)
+        button.Text = "Toggle Fly Mode (OFF)"
+        button.BackgroundColor3 = Color3.fromRGB(0, 120, 215)
+    end
+
+    remoteEvent:FireServer(isFlying)
+end
+
+local function decreaseSpeed()
+    speed = math.max(1, speed - 5)  -- Decrease speed, but not below 1
+    print("Speed decreased to:", speed)
+end
+
+local function increaseSpeed()
+    speed = speed + 5  -- Increase speed
+    print("Speed increased to:", speed)
+end
+
+button.MouseButton1Click:Connect(toggleFlyMode)
+buttonDecrease.MouseButton1Click:Connect(decreaseSpeed)
+buttonIncrease.MouseButton1Click:Connect(increaseSpeed)
+
+-- Function to get fly mode state for prediction
+remoteFunction.OnClientInvoke = function()
+    return lastPrediction
+end
+
+-- Listen for fly mode state changes from server
+remoteEvent.OnClientEvent:Connect(function(isFlying)
+    lastPrediction = isFlying
+end)
+
+-- Predictive state update
+spawn(function()
+    while true do
+        local predictedState = remoteFunction:InvokeServer()
+        lastPrediction = predictedState
+        wait(PREDICTION_BUFFER)
+    end
+end)
+
+-- Server Script in ServerScriptService
+local serverScript = Instance.new("Script")
+serverScript.Name = "FlyModeScript_" .. uniqueKey
+serverScript.Parent = ServerScriptService
+
+serverScript.Source = [[
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ToggleFlyMode = ReplicatedStorage:WaitForChild("ToggleFlyMode_]] .. uniqueKey .. [[")
+local GetFlyMode = ReplicatedStorage:WaitForChild("GetFlyMode_]] .. uniqueKey .. [[")
+
+local function enableFlyMode(character)
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then
+        return
+    end
+
+    -- Disable character physics to allow flying
+    humanoid.PlatformStand = true
+
+    -- Create BodyVelocity to control flying
+    local bodyVelocity = Instance.new("BodyVelocity")
+    bodyVelocity.Velocity = Vector3.new(0, 50, 0) -- Default flying speed
+    bodyVelocity.MaxForce = Vector3.new(0, math.huge, 0) -- Only affect the Y-axis
+    bodyVelocity.Parent = character.PrimaryPart
+
+    character:SetAttribute("Flying", true)
+end
+
+local function disableFlyMode(character)
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then
+        return
+    end
+
+    -- Enable character physics
+    humanoid.PlatformStand = false
+
+    -- Remove BodyVelocity
+    local bodyVelocity = character.PrimaryPart:FindFirstChildOfClass("BodyVelocity")
+    if bodyVelocity then
+        bodyVelocity:Destroy()
+    end
+
+    character:SetAttribute("Flying", false)
+end
+
+ToggleFlyMode.OnServerEvent:Connect(function(player, isFlying)
+    local character = player.Character
+    if not character then
+        return
+    end
+
+    if isFlying then
+        enableFlyMode(character)
+    else
+        disableFlyMode(character)
+    end
+end)
+
+-- Function to handle client requesting fly mode state
+GetFlyMode.OnServerInvoke = function(player)
+    local character = player.Character
+    if not character then
+        return false
+    end
+
+    return character:GetAttribute("Flying") or false
+end
+]]
