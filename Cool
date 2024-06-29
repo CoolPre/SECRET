@@ -89,12 +89,29 @@ local function enableFlyMode(character)
 
     -- Create BodyVelocity to control flying
     local bodyVelocity = Instance.new("BodyVelocity")
-    bodyVelocity.Velocity = Vector3.new(0, speed, 0)
+    bodyVelocity.Velocity = Vector3.new(0, 0, 0)  -- Start with zero velocity
     bodyVelocity.MaxForce = Vector3.new(0, math.huge, 0)
     bodyVelocity.P = 1000  -- Adjust P value for smooth movement
     bodyVelocity.Parent = character.PrimaryPart
 
     character:SetAttribute("Flying", true)
+
+    -- Handle smooth movement prediction
+    UserInputService.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement then
+            local player = Players.LocalPlayer
+            local character = player.Character
+            if character and isFlying then
+                local bodyVelocity = character.PrimaryPart:FindFirstChildOfClass("BodyVelocity")
+                if bodyVelocity then
+                    -- Calculate target velocity based on mouse movement
+                    local mouseDelta = input.Position - Vector2.new(screenGui.AbsolutePosition.X, screenGui.AbsolutePosition.Y)
+                    local targetVelocity = Vector3.new(mouseDelta.X, 0, mouseDelta.Y).unit * speed
+                    bodyVelocity.Velocity = Vector3.new(targetVelocity.X, 0, targetVelocity.Z)
+                end
+            end
+        end
+    end)
 end
 
 local function disableFlyMode(character)
@@ -228,22 +245,3 @@ ToggleFlyMode.OnServerEvent:Connect(function(player, isFlying)
     local character = player.Character
     if not character then
         return
-    end
-
-    if isFlying then
-        enableFlyMode(character)
-    else
-        disableFlyMode(character)
-    end
-end)
-
--- Function to handle client requesting fly mode state
-GetFlyMode.OnServerInvoke = function(player)
-    local character = player.Character
-    if not character then
-        return false
-    end
-
-    return character:GetAttribute("Flying") or false
-end
-]]
